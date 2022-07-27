@@ -172,7 +172,7 @@ def retrieve_feature_id(accession: str, soterm: str) -> int:
     # feature.name
     try:
         return Feature.objects.get(
-            name__iexact=accession, type__cv__name="sequence", type__name=soterm
+            name=accession, type__cv__name="sequence", type__name=soterm
         ).feature_id
     except (MultipleObjectsReturned, ObjectDoesNotExist):
         pass
@@ -180,7 +180,7 @@ def retrieve_feature_id(accession: str, soterm: str) -> int:
     # feature.dbxref.accession
     try:
         return Feature.objects.get(
-            dbxref__accession__iexact=accession,
+            dbxref__accession=accession,
             type__cv__name="sequence",
             type__name=soterm,
         ).feature_id
@@ -190,7 +190,7 @@ def retrieve_feature_id(accession: str, soterm: str) -> int:
     # featuredbxref.dbxref.accession
     try:
         return FeatureDbxref.objects.get(
-            dbxref__accession__iexact=accession,
+            dbxref__accession=accession,
             feature__type__cv__name="sequence",
             feature__type__name=soterm,
         ).feature_id
