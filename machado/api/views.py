@@ -239,48 +239,108 @@ class JBrowseFeatureViewSet(viewsets.GenericViewSet):
     def list(self, *args, **kwargs):
         """List."""
         queryset = self.get_queryset()
-        context = self.get_serializer_context()
-        serializer = JBrowseFeatureSerializer(queryset, context=context, many=True)
+        serializer = JBrowseFeatureSerializer(queryset, many=True)
         return Response({"features": serializer.data})
-
-    def get_serializer_context(self):
-        """Get the serializer context."""
-        refseq_feature_obj = Feature.objects.filter(
-            uniquename=self.kwargs.get("refseq")
-        ).first()
-        soType = self.request.query_params.get("soType")
-        return {"refseq": refseq_feature_obj, "soType": soType}
 
     def get_queryset(self, *args, **kwargs):
         """Get queryset."""
-        try:
-            refseq = Feature.objects.filter(
-                uniquename=self.kwargs.get("refseq")
-            ).first()
 
-        except ObjectDoesNotExist:
-            return
+        # borrowed from https://github.com/isubit/tripal_jbrowse_api
+        # which itself borrows from a GPLv3-licensed copy of https://github.com/hexylena/chado-jbrowse-connector
 
-        try:
-            soType = self.request.query_params.get("soType")
-            start = self.request.query_params.get("start", 1)
-            end = self.request.query_params.get("end")
+        query = """
+        WITH RECURSIVE feature_tree(xfeature_id, feature_type, feature_fmin, feature_fmax, feature_strand, feature_name, feature_uniquename, object_id, parent_id)
+        AS (
+            SELECT
+                feature.feature_id as xfeature_id,
+                cvterm.name AS feature_type,
+                featureloc.fmin AS feature_fmin,
+                featureloc.fmax AS feature_fmax,
+                featureloc.strand AS feature_strand,
+                feature.name AS feature_name,
+                feature.uniquename AS feature_uniquename,
+                feature.residues AS feature_residues,
+                feature.feature_id as object_id,
+                feature.feature_id as parent_id
+            FROM feature
+                LEFT JOIN
+                featureloc ON (feature.feature_id = featureloc.feature_id)
+                LEFT JOIN
+                cvterm ON (feature.type_id = cvterm.cvterm_id)
+            WHERE
+                /* bring this back if this function is updated to take organism as a path param */
+                /* (feature.organism_id = :organism_id)  AND */
+                /* with queried seqid */
+                (featureloc.srcfeature_id IN (SELECT feature_id FROM feature WHERE uniquename = %s))
+                AND
+                /* within queried region */
+                (featureloc.fmin <= %d AND %d <= featureloc.fmax)
+                /* top level only */
+                AND cvterm.name = %s
+        UNION ALL
+            SELECT
+                feature.feature_id as xfeature_id,
+                cvterm.name AS feature_type,
+                featureloc.fmin AS feature_fmin,
+                featureloc.fmax AS feature_fmax,
+                featureloc.strand AS feature_strand,
+                feature.name AS feature_name,
+                feature.uniquename AS feature_uniquename,
+                feature.residues AS feature_residues,
+                feature.feature_id as object_id,
+                feature_relationship.object_id as parent_id
+            FROM feature_relationship
+                LEFT JOIN
+                feature ON (feature.feature_id = feature_relationship.subject_id
+                            AND feature_relationship.type_id IN (SELECT cvterm_id FROM cvterm WHERE name = 'part_of'))
+                LEFT JOIN
+                featureloc ON (feature.feature_id = featureloc.feature_id)
+                LEFT JOIN
+                cvterm ON (feature.type_id = cvterm.cvterm_id)
+                JOIN
+                cvterm reltype ON (reltype.cvterm_id = feature_relationship.type_id),
+                feature_tree
+            WHERE
+                feature_relationship.object_id = feature_tree.object_id
+                AND feature_relationship.type_id IN (SELECT cvterm_id FROM cvterm WHERE name = 'part_of')
+        )
+        SELECT xfeature_id as feature_id, feature_type, feature_fmin, feature_fmax, feature_strand, feature_name AS name, feature_uniquename AS uniquename, parent_id FROM feature_tree;
+        """
 
-            features_locs = Featureloc.objects.filter(srcfeature=refseq)
-            if end is not None:
-                features_locs = features_locs.filter(fmin__lte=end)
-            features_locs = features_locs.filter(fmax__gte=start)
-            features_ids = features_locs.values_list("feature_id", flat=True)
+        params = [
+            self.kwargs.get("refseq"),
+            self.request.query_params.get("end"),
+            self.request.query_params.get("start", 1),
+            self.request.query_params.get("soType")
+        ]
 
-            features = Feature.objects.filter(
-                feature_id__in=features_ids, is_obsolete=0
-            )
-            if soType is not None:
-                features = features.filter(type__cv__name="sequence", type__name=soType)
-            return features
+        prelim_results = Feature.objects.raw(query, params)
 
-        except ObjectDoesNotExist:
-            return None
+        features = {}
+        temp_subfeatures = {}
+        results = []
+
+        for feature in prelim_results:
+
+            features[feature.feature_id] = feature
+
+            feature.subfeatures = []
+
+            if feature.feature_id in temp_subfeatures:
+                feature.subfeatures = temp_subfeatures[feature.feature_id]
+            else:
+                feature.subfeatures = []
+
+            if feature.feature_id == feature.parent_id:
+                results.append(feature)
+            elif feature.parent_id in features:
+                features[feature.parent_id].subfeatures.append(feature)
+            elif feature.parent_id in temp_subfeatures:
+                temp_subfeatures[feature.parent_id].append(feature)
+            else:
+                temp_subfeatures[feature.parent_id] = [feature]
+
+        return results
 
     @method_decorator(cache_page(CACHE_TIMEOUT))
     def dispatch(self, *args, **kwargs):

@@ -52,8 +52,12 @@ class JBrowseNamesSerializer(serializers.ModelSerializer):
             "objectName": obj.uniquename,
         }
 
+class SubfeaturesField(serializers.Serializer):
+    def to_representation(self, value):
+        serializer = self.parent.parent.__class__(value, context=self.context)
+        return serializer.data
 
-class JBrowseFeatureSerializer(serializers.ModelSerializer):
+class JBrowseFeatureSerializer(serializers.Serializer):
     """JBrowse transcript serializer."""
 
     start = serializers.SerializerMethodField()
@@ -62,7 +66,7 @@ class JBrowseFeatureSerializer(serializers.ModelSerializer):
     type = serializers.SerializerMethodField()
     accession = serializers.SerializerMethodField()
     uniqueID = serializers.SerializerMethodField()
-    subfeatures = serializers.SerializerMethodField()
+    subfeatures = SubfeaturesField(many=True)
     seq = serializers.SerializerMethodField()
     display = serializers.SerializerMethodField()
 
@@ -83,83 +87,37 @@ class JBrowseFeatureSerializer(serializers.ModelSerializer):
             "display",
         )
 
-    def _get_location(self, obj):
-        """Get the location."""
-        try:
-            feature_loc = Featureloc.objects.get(
-                feature_id=obj.feature_id, srcfeature_id=self.context.get("refseq")
-            )
-            return feature_loc
-        except ObjectDoesNotExist:
-            pass
-
-    def _get_subfeature(self, feature_id):
-        """Get subfeature."""
-        feature_loc = Featureloc.objects.get(
-            feature_id=feature_id, srcfeature_id=self.context["refseq"]
-        )
-        return {
-            "type": Feature.objects.filter(feature_id=feature_id)
-            .values_list("type__name", flat=True)
-            .first(),
-            "start": feature_loc.fmin,
-            "end": feature_loc.fmax,
-            "strand": feature_loc.strand,
-            "phase": feature_loc.phase,
-        }
-
     def get_start(self, obj):
         """Get the start location."""
-        if self.context.get("soType"):
-            return self._get_location(obj).fmin
-        else:
-            return 1
+        return obj.feature_fmin
 
     def get_end(self, obj):
         """Get the end location."""
-        if self.context.get("soType"):
-            return self._get_location(obj).fmax
-        else:
-            return obj.seqlen
+        return obj.feature_fmax
 
     def get_strand(self, obj):
         """Get the strand."""
-        try:
-            return self._get_location(obj).strand
-        except AttributeError:
-            return None
+        return obj.feature_strand
 
     def get_type(self, obj):
         """Get the type."""
-        feat_type = obj.type.name
-        return feat_type
+        return obj.feature_type
 
     def get_accession(self, obj):
         """Get the uniquename."""
-        return obj.uniquename
+        return obj.feature_uniquename
 
     def get_uniqueID(self, obj):
         """Get the uniquename."""
-        return obj.uniquename
-
-    def get_subfeatures(self, obj):
-        """Get the subfeatures."""
-        relationship = FeatureRelationship.objects.filter(
-            subject_id=obj.feature_id, type__name="part_of", type__cv__name="sequence"
-        )
-        result = list()
-        for feat in relationship:
-            result.append(self._get_subfeature(feat.object_id))
-        return result
+        return obj.feature_uniquename
 
     def get_seq(self, obj):
         """Get the sequence."""
-        return obj.residues
+        return obj.feature_residues
 
     def get_display(self, obj):
         """Get the display."""
         return obj.get_display()
-
 
 class JBrowseRefseqSerializer(serializers.Serializer):
     """JBrowse transcript serializer."""
