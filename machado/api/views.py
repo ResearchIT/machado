@@ -301,7 +301,7 @@ class JBrowseFeatureViewSet(viewsets.GenericViewSet):
                 cvterm reltype ON (reltype.cvterm_id = feature_relationship.type_id),
                 feature_tree
             WHERE
-                feature_relationship.object_id = feature_tree.object_id
+                feature_relationship.object_id = feature_tree.object_id::int
                 AND feature_relationship.type_id IN (SELECT cvterm_id FROM cvterm WHERE name = 'part_of')
         )
         SELECT xfeature_id as feature_id, feature_type, feature_fmin, feature_fmax, feature_strand, feature_name AS name, feature_uniquename AS uniquename, parent_id FROM feature_tree;
