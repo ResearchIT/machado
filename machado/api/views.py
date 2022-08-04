@@ -274,7 +274,7 @@ class JBrowseFeatureViewSet(viewsets.GenericViewSet):
                 (featureloc.srcfeature_id IN (SELECT feature_id FROM feature WHERE uniquename = %s))
                 AND
                 /* within queried region */
-                (featureloc.fmin <= %d AND %d <= featureloc.fmax)
+                (featureloc.fmin <= %s AND %s <= featureloc.fmax)
                 /* top level only */
                 AND cvterm.name = %s
         UNION ALL
