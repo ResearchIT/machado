@@ -261,7 +261,7 @@ class JBrowseFeatureViewSet(viewsets.GenericViewSet):
                 feature.uniquename AS feature_uniquename,
                 feature.residues AS feature_residues,
                 feature.feature_id as object_id,
-                feature.feature_id as parent_id
+                feature.feature_id as xparent_id
             FROM feature
                 LEFT JOIN
                 featureloc ON (feature.feature_id = featureloc.feature_id)
@@ -288,7 +288,7 @@ class JBrowseFeatureViewSet(viewsets.GenericViewSet):
                 feature.uniquename AS feature_uniquename,
                 feature.residues AS feature_residues,
                 feature.feature_id as object_id,
-                feature_relationship.object_id as parent_id
+                feature_relationship.object_id as xparent_id
             FROM feature_relationship
                 LEFT JOIN
                 feature ON (feature.feature_id = feature_relationship.subject_id
@@ -304,7 +304,7 @@ class JBrowseFeatureViewSet(viewsets.GenericViewSet):
                 feature_relationship.object_id = feature_tree.object_id::int
                 AND feature_relationship.type_id IN (SELECT cvterm_id FROM cvterm WHERE name = 'part_of')
         )
-        SELECT xfeature_id as feature_id, feature_type, feature_fmin, feature_fmax, feature_strand, feature_name AS name, feature_uniquename AS uniquename, parent_id FROM feature_tree;
+        SELECT xfeature_id as feature_id, feature_type, feature_fmin, feature_fmax, feature_strand, feature_name AS name, feature_uniquename, xparent_id FROM feature_tree;
         """
 
         params = [
